@@ -22,11 +22,11 @@ export default function CodeEditor({ language, theme, value, onChange, height = 
   };
 
   return (
-    <div className="border border-gray-300 dark:border-gray-700 rounded-lg overflow-hidden relative" style={{ height }}>
+    <div className="border border-[#e5e5e5] dark:border-[#3d3d3d] rounded-lg overflow-hidden relative bg-white dark:bg-[#1e1e1e] shadow-sm" style={{ height }}>
       {isLoading && (
-        <div className="absolute inset-0 z-10 bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="absolute inset-0 z-10 bg-[#fafafa] dark:bg-[#1e1e1e] flex items-center justify-center">
           <div className="text-center">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-4"></div>
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#ffa116] mb-4"></div>
             <p className="text-gray-600 dark:text-gray-400">Loading editor...</p>
           </div>
         </div>
@@ -39,9 +39,9 @@ export default function CodeEditor({ language, theme, value, onChange, height = 
         onChange={onChange}
         onMount={handleEditorDidMount}
         loading={
-          <div className="flex items-center justify-center h-full bg-gray-50 dark:bg-gray-900">
+          <div className="flex items-center justify-center h-full bg-[#fafafa] dark:bg-[#1e1e1e]">
             <div className="text-center">
-              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-4"></div>
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#ffa116] mb-4"></div>
               <p className="text-gray-600 dark:text-gray-400">Loading editor...</p>
             </div>
           </div>
@@ -54,6 +54,10 @@ export default function CodeEditor({ language, theme, value, onChange, height = 
           scrollBeyondLastLine: false,
           readOnly: false,
           automaticLayout: true,
+          padding: { top: 16, bottom: 16 },
+          wordWrap: 'on',
+          lineDecorationsWidth: 10,
+          lineNumbersMinChars: 3,
         }}
       />
     </div>

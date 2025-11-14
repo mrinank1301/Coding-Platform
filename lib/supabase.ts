@@ -37,7 +37,9 @@ export interface TestResult {
   test_case_id: number;
   passed: boolean;
   output?: string;
+  expected?: string;
   error?: string;
+  errorType?: string;
 }
 
 export interface User {

@@ -98,6 +98,15 @@ CREATE POLICY "Admins can view all submissions"
     )
   );
 
+CREATE POLICY "Admins can delete submissions"
+  ON public.submissions FOR DELETE
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE id = auth.uid() AND role = 'admin'
+    )
+  );
+
 -- Function to automatically create profile on signup
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$

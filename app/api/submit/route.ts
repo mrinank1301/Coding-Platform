@@ -21,6 +21,7 @@ interface TestResult {
   output?: string;
   expected?: string;
   error?: string;
+  errorType?: string;
 }
 
 // Judge0 API Configuration
@@ -117,11 +118,12 @@ async function waitForResult(token: string, maxAttempts = 30): Promise<Judge0Res
 }
 
 // Execute code using Judge0 API
-async function executeCode(code: string, language: string, input: string): Promise<{ output: string; error?: string }> {
+async function executeCode(code: string, language: string, input: string): Promise<{ output: string; error?: string; errorType?: string }> {
   if (!JUDGE0_API_KEY) {
     return {
       output: '',
       error: 'Judge0 API key not configured. Please set JUDGE0_API_KEY in your environment variables.',
+      errorType: 'CE',
     };
   }
 
@@ -157,21 +159,33 @@ async function executeCode(code: string, language: string, input: string): Promi
       return {
         output: '',
         error: 'Time Limit Exceeded',
+        errorType: 'TLE',
       };
     } else if (statusId === 6) {
+      const compileError = result.compile_output || result.stderr || 'Unknown compilation error';
       return {
         output: '',
-        error: `Compilation Error: ${result.compile_output || 'Unknown compilation error'}`,
+        error: `Compilation Error: ${compileError}`,
+        errorType: 'CE',
       };
     } else if (statusId >= 7 && statusId <= 12) {
+      const runtimeError = result.stderr || result.message || 'Unknown runtime error';
       return {
         output: '',
-        error: `Runtime Error: ${result.stderr || result.message || 'Unknown runtime error'}`,
+        error: `Runtime Error: ${runtimeError}`,
+        errorType: 'RTE',
+      };
+    } else if (statusId === 4) {
+      return {
+        output: result.stdout || '',
+        error: 'Wrong Answer',
+        errorType: 'WA',
       };
     } else {
       return {
         output: '',
         error: result.message || `Execution failed with status ${statusId}`,
+        errorType: 'Error',
       };
     }
   } catch (error: unknown) {
@@ -179,6 +193,7 @@ async function executeCode(code: string, language: string, input: string): Promi
     return {
       output: '',
       error: errorMessage,
+      errorType: 'Error',
     };
   }
 }
@@ -189,7 +204,7 @@ function normalizeOutput(output: string): string {
 
 export async function POST(request: NextRequest) {
   try {
-    const { questionId, code, language } = await request.json();
+    const { questionId, code, language, singleTestCase, testCaseInput } = await request.json();
 
     if (!questionId || !code || !language) {
       return NextResponse.json(
@@ -212,6 +227,38 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Handle single test case execution (for Run button)
+    if (singleTestCase && testCaseInput !== undefined) {
+      try {
+        const result = await executeCode(code, language, testCaseInput);
+        
+        if (result.error) {
+          return NextResponse.json({
+            status: result.errorType === 'TLE' ? 'time_limit_exceeded' : 
+                   result.errorType === 'CE' ? 'compilation_error' :
+                   result.errorType === 'RTE' ? 'runtime_error' :
+                   result.errorType === 'WA' ? 'wrong_answer' : 'runtime_error',
+            output: result.output || '',
+            error: result.error,
+            errorType: result.errorType,
+          });
+        }
+
+        return NextResponse.json({
+          status: 'accepted',
+          output: result.output,
+        });
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : 'Execution failed';
+        return NextResponse.json({
+          status: 'runtime_error',
+          output: '',
+          error: errorMessage,
+          errorType: 'RTE',
+        });
+      }
+    }
+
     const testCases = question.test_cases;
     const testResults: TestResult[] = [];
     let allPassed = true;
@@ -229,9 +276,13 @@ export async function POST(request: NextRequest) {
             test_case_id: i,
             passed: false,
             error: result.error,
+            errorType: result.errorType,
           });
           allPassed = false;
-          status = 'runtime_error';
+          status = result.errorType === 'TLE' ? 'time_limit_exceeded' : 
+                   result.errorType === 'CE' ? 'compilation_error' :
+                   result.errorType === 'RTE' ? 'runtime_error' :
+                   result.errorType === 'WA' ? 'wrong_answer' : 'runtime_error';
           break; // Stop on first error
         }
 
@@ -244,6 +295,7 @@ export async function POST(request: NextRequest) {
           passed,
           output: result.output,
           expected: testCase.expected_output,
+          errorType: passed ? undefined : 'WA',
         });
 
         if (!passed) {
@@ -256,6 +308,7 @@ export async function POST(request: NextRequest) {
           test_case_id: i,
           passed: false,
           error: errorMessage,
+          errorType: 'RTE',
         });
         allPassed = false;
         status = 'runtime_error';

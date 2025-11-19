@@ -6,12 +6,19 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // Database types
+export interface TestCaseRange {
+  start: number;
+  end: number;
+  generator?: string; // Optional generator function/script
+}
+
 export interface Question {
   id: string;
   title: string;
   description: string;
   difficulty: 'easy' | 'medium' | 'hard';
   test_cases: TestCase[];
+  test_case_ranges?: TestCaseRange[]; // Dynamic test case ranges (up to 1000 total)
   created_at: string;
   created_by: string;
 }

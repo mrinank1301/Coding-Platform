@@ -1,19 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-
-// Judge0 API Types
-interface Judge0Status {
-  id: number;
-  description: string;
-}
-
-interface Judge0Result {
-  status: Judge0Status;
-  stdout: string | null;
-  stderr: string | null;
-  compile_output: string | null;
-  message: string | null;
-}
+import { executeCodeInDocker } from '@/lib/docker-executor';
 
 interface TestResult {
   test_case_id: number;
@@ -24,178 +11,59 @@ interface TestResult {
   errorType?: string;
 }
 
-// Judge0 API Configuration
-const JUDGE0_API_KEY = process.env.JUDGE0_API_KEY;
-const JUDGE0_API_URL = process.env.JUDGE0_API_URL || 'https://judge0-ce.p.rapidapi.com';
-const USE_RAPIDAPI = JUDGE0_API_URL.includes('rapidapi.com');
-
-// Map language codes to Judge0 language IDs
-function getLanguageId(language: string): number {
-  const languageMap: Record<string, number> = {
-    'c': 50,
-    'cpp': 54,
-    'java': 62,
-    'python': 71,
-  };
-  return languageMap[language.toLowerCase()] || 71; // Default to Python
+interface TestCaseConfig {
+  input: string;
+  expected_output: string;
+  is_hidden: boolean;
 }
 
-// Create a submission in Judge0
-async function createSubmission(code: string, language: string, input: string): Promise<string> {
-  const languageId = getLanguageId(language);
-  
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-
-  if (USE_RAPIDAPI) {
-    headers['X-RapidAPI-Key'] = JUDGE0_API_KEY || '';
-    headers['X-RapidAPI-Host'] = 'judge0-ce.p.rapidapi.com';
-  } else {
-    headers['Authorization'] = `Bearer ${JUDGE0_API_KEY}`;
-  }
-
-  const response = await fetch(`${JUDGE0_API_URL}/submissions`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      source_code: code,
-      language_id: languageId,
-      stdin: input,
-      cpu_time_limit: 2, // 2 seconds
-      memory_limit: 128000, // 128 MB
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Failed to create submission: ${response.status} - ${errorText}`);
-  }
-
-  const data = await response.json();
-  return data.token;
+interface TestCaseRange {
+  start: number;
+  end: number;
+  generator?: string; // Optional: function to generate test cases
 }
 
-// Get submission result from Judge0
-async function getSubmissionResult(token: string): Promise<Judge0Result> {
-  const headers: Record<string, string> = {};
-
-  if (USE_RAPIDAPI) {
-    headers['X-RapidAPI-Key'] = JUDGE0_API_KEY || '';
-    headers['X-RapidAPI-Host'] = 'judge0-ce.p.rapidapi.com';
-  } else {
-    headers['Authorization'] = `Bearer ${JUDGE0_API_KEY}`;
-  }
-
-  const response = await fetch(`${JUDGE0_API_URL}/submissions/${token}`, {
-    method: 'GET',
-    headers,
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Failed to get submission result: ${response.status} - ${errorText}`);
-  }
-
-  return await response.json();
+interface QuestionWithRanges {
+  test_cases?: TestCaseConfig[];
+  test_case_ranges?: TestCaseRange[];
 }
 
-// Poll for submission result (status 1 = In Queue, 2 = Processing)
-async function waitForResult(token: string, maxAttempts = 30): Promise<Judge0Result> {
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const result = await getSubmissionResult(token);
-    
-    // Status 1 = In Queue, 2 = Processing
-    if (result.status?.id !== 1 && result.status?.id !== 2) {
-      return result;
-    }
-    
-    // Wait before next poll (exponential backoff)
-    await new Promise(resolve => setTimeout(resolve, Math.min(1000 * (attempt + 1), 2000)));
-  }
-  
-  throw new Error('Submission timeout: Code execution took too long');
-}
+// Resource limits
+const MEMORY_LIMIT_MB = 256;
+const TIME_LIMIT_SECONDS = 1;
 
-// Execute code using Judge0 API
+// Execute code using Docker sandbox
 async function executeCode(code: string, language: string, input: string): Promise<{ output: string; error?: string; errorType?: string }> {
-  if (!JUDGE0_API_KEY) {
-    return {
-      output: '',
-      error: 'Judge0 API key not configured. Please set JUDGE0_API_KEY in your environment variables.',
-      errorType: 'CE',
-    };
-  }
-
   try {
-    // Create submission
-    const token = await createSubmission(code, language, input);
+    const result = await executeCodeInDocker(code, language, input, MEMORY_LIMIT_MB, TIME_LIMIT_SECONDS);
     
-    // Poll for result
-    const result = await waitForResult(token);
-    
-    // Judge0 status codes:
-    // 3 = Accepted (success)
-    // 4 = Wrong Answer
-    // 5 = Time Limit Exceeded
-    // 6 = Compilation Error
-    // 7 = Runtime Error (SIGSEGV)
-    // 8 = Runtime Error (SIGXFSZ)
-    // 9 = Runtime Error (SIGFPE)
-    // 10 = Runtime Error (SIGABRT)
-    // 11 = Runtime Error (NZEC)
-    // 12 = Runtime Error (Other)
-    // 13 = Internal Error
-    // 14 = Exec Format Error
-    
-    const statusId = result.status?.id;
-    
-    if (statusId === 3) {
-      // Accepted - code executed successfully
+    if (result.error) {
       return {
-        output: result.stdout || '',
-      };
-    } else if (statusId === 5) {
-      return {
-        output: '',
-        error: 'Time Limit Exceeded',
-        errorType: 'TLE',
-      };
-    } else if (statusId === 6) {
-      const compileError = result.compile_output || result.stderr || 'Unknown compilation error';
-      return {
-        output: '',
-        error: `Compilation Error: ${compileError}`,
-        errorType: 'CE',
-      };
-    } else if (statusId >= 7 && statusId <= 12) {
-      const runtimeError = result.stderr || result.message || 'Unknown runtime error';
-      return {
-        output: '',
-        error: `Runtime Error: ${runtimeError}`,
-        errorType: 'RTE',
-      };
-    } else if (statusId === 4) {
-      return {
-        output: result.stdout || '',
-        error: 'Wrong Answer',
-        errorType: 'WA',
-      };
-    } else {
-      return {
-        output: '',
-        error: result.message || `Execution failed with status ${statusId}`,
-        errorType: 'Error',
+        output: result.output || '',
+        error: result.error,
+        errorType: result.errorType || 'RTE',
       };
     }
+    
+    return {
+      output: result.output,
+    };
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Failed to execute code';
     return {
       output: '',
       error: errorMessage,
-      errorType: 'Error',
+      errorType: 'RTE',
     };
   }
+}
+
+// Generate test cases from range (simple implementation - can be extended)
+function generateTestCasesFromRange(range: TestCaseRange): TestCaseConfig[] {
+  const testCases: TestCaseConfig[] = [];
+  // For now, return empty array - this would need a proper generator function
+  // In a real implementation, you'd parse the generator string and execute it
+  return testCases;
 }
 
 function normalizeOutput(output: string): string {
@@ -216,7 +84,7 @@ export async function POST(request: NextRequest) {
     // Get question and test cases
     const { data: question, error: questionError } = await supabase
       .from('questions')
-      .select('test_cases')
+      .select('test_cases, test_case_ranges')
       .eq('id', questionId)
       .single();
 
@@ -226,6 +94,8 @@ export async function POST(request: NextRequest) {
         { status: 404 }
       );
     }
+
+    const questionData = question as QuestionWithRanges;
 
     // Handle single test case execution (for Run button)
     if (singleTestCase && testCaseInput !== undefined) {
@@ -237,6 +107,7 @@ export async function POST(request: NextRequest) {
             status: result.errorType === 'TLE' ? 'time_limit_exceeded' : 
                    result.errorType === 'CE' ? 'compilation_error' :
                    result.errorType === 'RTE' ? 'runtime_error' :
+                   result.errorType === 'MLE' ? 'runtime_error' :
                    result.errorType === 'WA' ? 'wrong_answer' : 'runtime_error',
             output: result.output || '',
             error: result.error,
@@ -259,14 +130,41 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const testCases = question.test_cases;
+    // Collect all test cases (static + generated from ranges)
+    let allTestCases: TestCaseConfig[] = [];
+    
+    // Add static test cases
+    if (questionData.test_cases && Array.isArray(questionData.test_cases)) {
+      allTestCases = [...questionData.test_cases];
+    }
+    
+    // Generate test cases from ranges (if any)
+    if (questionData.test_case_ranges && Array.isArray(questionData.test_case_ranges)) {
+      for (const range of questionData.test_case_ranges) {
+        const generated = generateTestCasesFromRange(range);
+        allTestCases = allTestCases.concat(generated);
+      }
+    }
+    
+    // Limit to 1000 test cases max
+    if (allTestCases.length > 1000) {
+      allTestCases = allTestCases.slice(0, 1000);
+    }
+
+    if (allTestCases.length === 0) {
+      return NextResponse.json(
+        { error: 'No test cases found for this question' },
+        { status: 400 }
+      );
+    }
+
     const testResults: TestResult[] = [];
     let allPassed = true;
     let status = 'accepted';
 
-    // Execute code against each test case
-    for (let i = 0; i < testCases.length; i++) {
-      const testCase = testCases[i];
+    // Execute code against each test case - STOP on first failure
+    for (let i = 0; i < allTestCases.length; i++) {
+      const testCase = allTestCases[i];
       
       try {
         const result = await executeCode(code, language, testCase.input);
@@ -282,6 +180,7 @@ export async function POST(request: NextRequest) {
           status = result.errorType === 'TLE' ? 'time_limit_exceeded' : 
                    result.errorType === 'CE' ? 'compilation_error' :
                    result.errorType === 'RTE' ? 'runtime_error' :
+                   result.errorType === 'MLE' ? 'runtime_error' :
                    result.errorType === 'WA' ? 'wrong_answer' : 'runtime_error';
           break; // Stop on first error
         }
@@ -301,6 +200,7 @@ export async function POST(request: NextRequest) {
         if (!passed) {
           allPassed = false;
           status = 'wrong_answer';
+          break; // Stop on first wrong answer
         }
       } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : 'Execution failed';
@@ -312,6 +212,7 @@ export async function POST(request: NextRequest) {
         });
         allPassed = false;
         status = 'runtime_error';
+        break; // Stop on first exception
       }
     }
 

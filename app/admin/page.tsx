@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import AuthGuard from '@/components/AuthGuard';
 import LogoutButton from '@/components/LogoutButton';
-import { supabase, Question, TestCase } from '@/lib/supabase';
+import { supabase, Question, TestCase, TestCaseRange } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 
 export default function AdminPage() {
@@ -18,6 +18,7 @@ export default function AdminPage() {
     description: '',
     difficulty: 'easy' as 'easy' | 'medium' | 'hard',
     testCases: [{ input: '', expected_output: '', is_hidden: false }] as TestCase[],
+    testCaseRanges: [] as TestCaseRange[],
   });
 
   useEffect(() => {
@@ -48,13 +49,29 @@ export default function AdminPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const questionData = {
+      // Validate total test cases don't exceed 1000
+      const staticCount = formData.testCases.length;
+      const rangeCount = formData.testCaseRanges.reduce((sum, range) => sum + (range.end - range.start + 1), 0);
+      const totalCount = staticCount + rangeCount;
+      
+      if (totalCount > 1000) {
+        alert(`Total test cases (${totalCount}) cannot exceed 1000. Please reduce the number of test cases or ranges.`);
+        setLoading(false);
+        return;
+      }
+
+      const questionData: any = {
         title: formData.title,
         description: formData.description,
         difficulty: formData.difficulty,
         test_cases: formData.testCases,
         created_by: user.id,
       };
+      
+      // Only include test_case_ranges if there are any
+      if (formData.testCaseRanges.length > 0) {
+        questionData.test_case_ranges = formData.testCaseRanges;
+      }
 
       if (editingQuestion) {
         const { error } = await supabase
@@ -76,6 +93,7 @@ export default function AdminPage() {
         description: '',
         difficulty: 'easy',
         testCases: [{ input: '', expected_output: '', is_hidden: false }],
+        testCaseRanges: [],
       });
       fetchQuestions();
     } catch (error) {
@@ -92,6 +110,7 @@ export default function AdminPage() {
       description: question.description,
       difficulty: question.difficulty,
       testCases: question.test_cases,
+      testCaseRanges: question.test_case_ranges || [],
     });
     setShowForm(true);
   };
@@ -196,6 +215,26 @@ export default function AdminPage() {
     const updated = [...formData.testCases];
     updated[index] = { ...updated[index], [field]: value };
     setFormData({ ...formData, testCases: updated });
+  };
+
+  const addTestCaseRange = () => {
+    setFormData({
+      ...formData,
+      testCaseRanges: [...formData.testCaseRanges, { start: 1, end: 10 }],
+    });
+  };
+
+  const removeTestCaseRange = (index: number) => {
+    setFormData({
+      ...formData,
+      testCaseRanges: formData.testCaseRanges.filter((_, i) => i !== index),
+    });
+  };
+
+  const updateTestCaseRange = (index: number, field: keyof TestCaseRange, value: number | string) => {
+    const updated = [...formData.testCaseRanges];
+    updated[index] = { ...updated[index], [field]: value };
+    setFormData({ ...formData, testCaseRanges: updated });
   };
 
   return (
@@ -320,7 +359,12 @@ export default function AdminPage() {
                 <div>
                   <div className="flex justify-between items-center mb-4">
                     <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
-                      Test Cases ({formData.testCases.length})
+                      Static Test Cases ({formData.testCases.length})
+                      {formData.testCaseRanges.length > 0 && (
+                        <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
+                          (Total: {formData.testCases.length + formData.testCaseRanges.reduce((sum, r) => sum + (r.end - r.start + 1), 0)})
+                        </span>
+                      )}
                     </label>
                     <button
                       type="button"
@@ -394,6 +438,105 @@ export default function AdminPage() {
                         </div>
                       </div>
                     ))}
+                  </div>
+                </div>
+
+                {/* Test Case Ranges Section */}
+                <div>
+                  <div className="flex justify-between items-center mb-4">
+                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                      Dynamic Test Case Ranges ({formData.testCaseRanges.length})
+                      <span className="ml-2 text-xs text-gray-500 dark:text-gray-400 font-normal">
+                        (Max 1000 total test cases including static)
+                      </span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={addTestCaseRange}
+                      className="px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-xl hover:from-purple-600 hover:to-indigo-600 transition-all transform hover:scale-105 shadow-lg hover:shadow-xl font-semibold flex items-center gap-2"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Add Range
+                    </button>
+                  </div>
+                  <div className="space-y-4">
+                    {formData.testCaseRanges.map((range, index) => {
+                      const rangeCount = range.end - range.start + 1;
+                      return (
+                        <div key={index} className="p-5 border-2 border-gray-200 dark:border-[#3d3d3d] rounded-xl bg-gradient-to-br from-purple-50 to-indigo-50 dark:from-[#2a1a3d] dark:to-[#1e1e2e] hover:border-purple-400 dark:hover:border-purple-500 transition-all">
+                          <div className="flex justify-between items-center mb-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-indigo-500 rounded-lg flex items-center justify-center text-white font-bold text-sm">
+                                {index + 1}
+                              </div>
+                              <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                                Range {index + 1} ({rangeCount} test cases)
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeTestCaseRange(index)}
+                              className="px-3 py-1.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors font-medium text-sm flex items-center gap-1"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                              Remove
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                                Start Index
+                              </label>
+                              <input
+                                type="number"
+                                min="1"
+                                required
+                                value={range.start}
+                                onChange={(e) => updateTestCaseRange(index, 'start', parseInt(e.target.value) || 1)}
+                                className="w-full px-3 py-2 text-sm border-2 border-gray-300 dark:border-[#3d3d3d] rounded-lg bg-white dark:bg-[#252525] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                                End Index
+                              </label>
+                              <input
+                                type="number"
+                                min={range.start}
+                                required
+                                value={range.end}
+                                onChange={(e) => updateTestCaseRange(index, 'end', parseInt(e.target.value) || range.start)}
+                                className="w-full px-3 py-2 text-sm border-2 border-gray-300 dark:border-[#3d3d3d] rounded-lg bg-white dark:bg-[#252525] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                              />
+                            </div>
+                          </div>
+                          <div className="mt-4">
+                            <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                              Generator Function (Optional)
+                            </label>
+                            <textarea
+                              rows={2}
+                              value={range.generator || ''}
+                              onChange={(e) => updateTestCaseRange(index, 'generator', e.target.value)}
+                              className="w-full px-3 py-2 text-sm border-2 border-gray-300 dark:border-[#3d3d3d] rounded-lg bg-white dark:bg-[#252525] text-gray-900 dark:text-white font-mono focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all resize-none"
+                              placeholder="Optional: JavaScript function to generate test cases for this range"
+                            />
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                              Note: Generator function support coming soon. For now, use static test cases.
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {formData.testCaseRanges.length === 0 && (
+                      <div className="p-4 border-2 border-dashed border-gray-300 dark:border-[#3d3d3d] rounded-xl text-center text-sm text-gray-500 dark:text-gray-400">
+                        No test case ranges defined. Click "Add Range" to create dynamic test cases.
+                      </div>
+                    )}
                   </div>
                 </div>
 

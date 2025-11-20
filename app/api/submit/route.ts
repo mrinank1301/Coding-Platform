@@ -36,7 +36,7 @@ const TIME_LIMIT_SECONDS = 1;
 async function executeCode(code: string, language: string, input: string): Promise<{ output: string; error?: string; errorType?: string }> {
   try {
     const result = await executeCodeInDocker(code, language, input, MEMORY_LIMIT_MB, TIME_LIMIT_SECONDS);
-    
+
     if (result.error) {
       return {
         output: result.output || '',
@@ -44,7 +44,7 @@ async function executeCode(code: string, language: string, input: string): Promi
         errorType: result.errorType || 'RTE',
       };
     }
-    
+
     return {
       output: result.output,
     };
@@ -101,14 +101,14 @@ export async function POST(request: NextRequest) {
     if (singleTestCase && testCaseInput !== undefined) {
       try {
         const result = await executeCode(code, language, testCaseInput);
-        
+
         if (result.error) {
           return NextResponse.json({
-            status: result.errorType === 'TLE' ? 'time_limit_exceeded' : 
-                   result.errorType === 'CE' ? 'compilation_error' :
-                   result.errorType === 'RTE' ? 'runtime_error' :
-                   result.errorType === 'MLE' ? 'runtime_error' :
-                   result.errorType === 'WA' ? 'wrong_answer' : 'runtime_error',
+            status: result.errorType === 'TLE' ? 'time_limit_exceeded' :
+              result.errorType === 'CE' ? 'compilation_error' :
+                result.errorType === 'RTE' ? 'runtime_error' :
+                  result.errorType === 'MLE' ? 'runtime_error' :
+                    result.errorType === 'WA' ? 'wrong_answer' : 'runtime_error',
             output: result.output || '',
             error: result.error,
             errorType: result.errorType,
@@ -132,12 +132,12 @@ export async function POST(request: NextRequest) {
 
     // Collect all test cases (static + generated from ranges)
     let allTestCases: TestCaseConfig[] = [];
-    
+
     // Add static test cases
     if (questionData.test_cases && Array.isArray(questionData.test_cases)) {
       allTestCases = [...questionData.test_cases];
     }
-    
+
     // Generate test cases from ranges (if any)
     if (questionData.test_case_ranges && Array.isArray(questionData.test_case_ranges)) {
       for (const range of questionData.test_case_ranges) {
@@ -145,7 +145,7 @@ export async function POST(request: NextRequest) {
         allTestCases = allTestCases.concat(generated);
       }
     }
-    
+
     // Limit to 1000 test cases max
     if (allTestCases.length > 1000) {
       allTestCases = allTestCases.slice(0, 1000);
@@ -162,13 +162,13 @@ export async function POST(request: NextRequest) {
     let allPassed = true;
     let status = 'accepted';
 
-    // Execute code against each test case - STOP on first failure
+    // Execute code against each test case
     for (let i = 0; i < allTestCases.length; i++) {
       const testCase = allTestCases[i];
-      
+
       try {
         const result = await executeCode(code, language, testCase.input);
-        
+
         if (result.error) {
           testResults.push({
             test_case_id: i,
@@ -177,12 +177,22 @@ export async function POST(request: NextRequest) {
             errorType: result.errorType,
           });
           allPassed = false;
-          status = result.errorType === 'TLE' ? 'time_limit_exceeded' : 
-                   result.errorType === 'CE' ? 'compilation_error' :
-                   result.errorType === 'RTE' ? 'runtime_error' :
-                   result.errorType === 'MLE' ? 'runtime_error' :
-                   result.errorType === 'WA' ? 'wrong_answer' : 'runtime_error';
-          break; // Stop on first error
+
+          // Prioritize Compilation Error as the overall status and stop
+          if (result.errorType === 'CE') {
+            status = 'compilation_error';
+            break;
+          }
+
+          // For other errors (RTE, TLE), we update status but continue testing other cases
+          // Only update status if it's currently 'accepted' or 'wrong_answer' (RTE/TLE are more severe than WA)
+          if (status === 'accepted' || status === 'wrong_answer') {
+            status = result.errorType === 'TLE' ? 'time_limit_exceeded' :
+              result.errorType === 'MLE' ? 'memory_limit_exceeded' :
+                'runtime_error';
+          }
+
+          continue;
         }
 
         const normalizedOutput = normalizeOutput(result.output);
@@ -199,8 +209,10 @@ export async function POST(request: NextRequest) {
 
         if (!passed) {
           allPassed = false;
-          status = 'wrong_answer';
-          break; // Stop on first wrong answer
+          // Only update status to WA if it's currently accepted (don't overwrite RTE/TLE/CE)
+          if (status === 'accepted') {
+            status = 'wrong_answer';
+          }
         }
       } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : 'Execution failed';
@@ -211,8 +223,9 @@ export async function POST(request: NextRequest) {
           errorType: 'RTE',
         });
         allPassed = false;
-        status = 'runtime_error';
-        break; // Stop on first exception
+        if (status === 'accepted' || status === 'wrong_answer') {
+          status = 'runtime_error';
+        }
       }
     }
 

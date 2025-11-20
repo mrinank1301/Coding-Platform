@@ -1,24 +1,51 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import AuthGuard from '@/components/AuthGuard';
-import LogoutButton from '@/components/LogoutButton';
-import { supabase, Question, TestCase, TestCaseRange } from '@/lib/supabase';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import AuthGuard from "@/components/AuthGuard";
+import AdminLayout from "@/components/dashboard/AdminLayout";
+import { supabase, Question, TestCase, TestCaseRange } from "@/lib/supabase";
+import { motion, AnimatePresence } from "framer-motion";
+import { 
+  Plus, 
+  Search, 
+  Edit2, 
+  Trash2, 
+  Save, 
+  X, 
+  Check, 
+  ChevronDown, 
+  ChevronUp,
+  AlertCircle,
+  Code2,
+  TestTube,
+  Layers,
+  BarChart3
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export default function AdminPage() {
   const router = useRouter();
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
   const [showForm, setShowForm] = useState(false);
-  const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
   
-  const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    difficulty: 'easy' as 'easy' | 'medium' | 'hard',
-    testCases: [{ input: '', expected_output: '', is_hidden: false }] as TestCase[],
-    testCaseRanges: [] as TestCaseRange[],
+  // Form State
+  const [formData, setFormData] = useState<{
+    id?: string;
+    title: string;
+    description: string;
+    difficulty: "easy" | "medium" | "hard";
+    test_cases: TestCase[];
+    test_case_ranges: TestCaseRange[];
+  }>({
+    title: "",
+    description: "",
+    difficulty: "easy",
+    test_cases: [],
+    test_case_ranges: []
   });
 
   useEffect(() => {
@@ -28,673 +55,506 @@ export default function AdminPage() {
   const fetchQuestions = async () => {
     try {
       const { data, error } = await supabase
-        .from('questions')
-        .select('*')
-        .order('created_at', { ascending: false });
+        .from("questions")
+        .select("*")
+        .order("created_at", { ascending: false });
 
       if (error) throw error;
       setQuestions(data || []);
     } catch (error) {
-      console.error('Error fetching questions:', error instanceof Error ? error.message : 'Unknown error');
+      console.error("Error fetching questions:", error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-
+  const handleSave = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      if (!user) throw new Error("Not authenticated");
 
-      // Validate total test cases don't exceed 1000
-      const staticCount = formData.testCases.length;
-      const rangeCount = formData.testCaseRanges.reduce((sum, range) => sum + (range.end - range.start + 1), 0);
+      // Validate total test cases
+      const staticCount = formData.test_cases.length;
+      const rangeCount = formData.test_case_ranges.reduce((sum, range) => sum + (range.end - range.start + 1), 0);
       const totalCount = staticCount + rangeCount;
       
       if (totalCount > 1000) {
-        alert(`Total test cases (${totalCount}) cannot exceed 1000. Please reduce the number of test cases or ranges.`);
-        setLoading(false);
+        alert(`Total test cases (${totalCount}) cannot exceed 1000.`);
         return;
       }
 
-      const questionData: any = {
+      const questionData = {
         title: formData.title,
         description: formData.description,
         difficulty: formData.difficulty,
-        test_cases: formData.testCases,
+        test_cases: formData.test_cases,
+        test_case_ranges: formData.test_case_ranges,
         created_by: user.id,
       };
-      
-      // Only include test_case_ranges if there are any
-      if (formData.testCaseRanges.length > 0) {
-        questionData.test_case_ranges = formData.testCaseRanges;
-      }
 
-      if (editingQuestion) {
+      if (isEditing && formData.id) {
         const { error } = await supabase
-          .from('questions')
+          .from("questions")
           .update(questionData)
-          .eq('id', editingQuestion.id);
+          .eq("id", formData.id);
         if (error) throw error;
       } else {
         const { error } = await supabase
-          .from('questions')
+          .from("questions")
           .insert([questionData]);
         if (error) throw error;
       }
 
       setShowForm(false);
-      setEditingQuestion(null);
-      setFormData({
-        title: '',
-        description: '',
-        difficulty: 'easy',
-        testCases: [{ input: '', expected_output: '', is_hidden: false }],
-        testCaseRanges: [],
-      });
+      setIsEditing(false);
+      resetForm();
       fetchQuestions();
     } catch (error) {
-      alert('Error saving question: ' + (error instanceof Error ? error.message : 'Unknown error'));
-    } finally {
-      setLoading(false);
+      console.error("Error saving question:", error);
+      alert("Error saving question");
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this question?")) return;
+
+    try {
+      const { error } = await supabase
+        .from("questions")
+        .delete()
+        .eq("id", id);
+
+      if (error) throw error;
+      fetchQuestions();
+    } catch (error) {
+      console.error("Error deleting question:", error);
+      alert("Error deleting question. It might have related submissions.");
     }
   };
 
   const handleEdit = (question: Question) => {
-    setEditingQuestion(question);
     setFormData({
+      id: question.id,
       title: question.title,
       description: question.description,
       difficulty: question.difficulty,
-      testCases: question.test_cases,
-      testCaseRanges: question.test_case_ranges || [],
+      test_cases: question.test_cases || [],
+      test_case_ranges: question.test_case_ranges || [],
     });
+    setIsEditing(true);
     setShowForm(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this question? This will also delete all related submissions. This action cannot be undone.')) return;
-
-    try {
-      // First check if user is admin
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        alert('You must be logged in to delete questions');
-        return;
-      }
-
-      // Check user role
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single();
-
-      if (!profile || profile.role !== 'admin') {
-        alert('Only admins can delete questions');
-        return;
-      }
-
-      // First, delete all submissions related to this question
-      // Note: This requires the "Admins can delete submissions" policy in the database
-      const { error: submissionsError, data: deletedSubmissions } = await supabase
-        .from('submissions')
-        .delete()
-        .eq('question_id', id)
-        .select();
-
-      if (submissionsError) {
-        console.error('Error deleting submissions:', submissionsError);
-        // If it's a permission error, provide helpful message
-        const errorMsg = submissionsError.message || JSON.stringify(submissionsError);
-        if (errorMsg.includes('policy') || errorMsg.includes('permission') || errorMsg.includes('RLS')) {
-          throw new Error('Permission denied: Admins need a database policy to delete submissions. Please run the migration_add_admin_delete_submissions.sql script in your Supabase SQL editor.');
-        }
-        // Continue anyway - might be no submissions or other non-critical error
-      } else {
-        console.log(`Deleted ${deletedSubmissions?.length || 0} submissions for question ${id}`);
-      }
-
-      // Then delete the question
-      const { data, error } = await supabase
-        .from('questions')
-        .delete()
-        .eq('id', id)
-        .select();
-
-      if (error) {
-        console.error('Delete error:', error);
-        // Check if it's a foreign key constraint error
-        if (error.message && error.message.includes('foreign key')) {
-          throw new Error('Cannot delete question: It has related submissions. Please delete submissions first or contact database administrator.');
-        }
-        throw error;
-      }
-
-      if (data && data.length > 0) {
-        // Success - refresh the list
-        fetchQuestions();
-      } else {
-        alert('Question not found or already deleted');
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error('Error deleting question:', error);
-      
-      // Provide more helpful error messages
-      let userMessage = `Error deleting question: ${errorMessage}`;
-      
-      if (errorMessage.includes('foreign key')) {
-        userMessage = 'Cannot delete this question because it has related submissions. The system attempted to delete them automatically but failed. Please contact your database administrator.';
-      } else if (errorMessage.includes('permission') || errorMessage.includes('policy')) {
-        userMessage = 'Permission denied. Please ensure:\n1. You are logged in as an admin\n2. Your database RLS policies allow deletion\n3. You have the correct permissions';
-      }
-      
-      alert(userMessage);
-    }
+  const resetForm = () => {
+    setFormData({
+      title: "",
+      description: "",
+      difficulty: "easy",
+      test_cases: [],
+      test_case_ranges: []
+    });
   };
 
+  // Test Case Helpers
   const addTestCase = () => {
     setFormData({
       ...formData,
-      testCases: [...formData.testCases, { input: '', expected_output: '', is_hidden: false }],
+      test_cases: [...formData.test_cases, { input: "", expected_output: "", is_hidden: false }]
     });
+  };
+
+  const updateTestCase = (index: number, field: keyof TestCase, value: any) => {
+    const newTestCases = [...formData.test_cases];
+    newTestCases[index] = { ...newTestCases[index], [field]: value };
+    setFormData({ ...formData, test_cases: newTestCases });
   };
 
   const removeTestCase = (index: number) => {
     setFormData({
       ...formData,
-      testCases: formData.testCases.filter((_, i) => i !== index),
+      test_cases: formData.test_cases.filter((_, i) => i !== index)
     });
   };
 
-  const updateTestCase = (index: number, field: keyof TestCase, value: string | boolean) => {
-    const updated = [...formData.testCases];
-    updated[index] = { ...updated[index], [field]: value };
-    setFormData({ ...formData, testCases: updated });
-  };
-
+  // Range Helpers
   const addTestCaseRange = () => {
     setFormData({
       ...formData,
-      testCaseRanges: [...formData.testCaseRanges, { start: 1, end: 10 }],
+      test_case_ranges: [...formData.test_case_ranges, { start: 1, end: 10 }]
     });
+  };
+
+  const updateTestCaseRange = (index: number, field: keyof TestCaseRange, value: any) => {
+    const newRanges = [...formData.test_case_ranges];
+    newRanges[index] = { ...newRanges[index], [field]: value };
+    setFormData({ ...formData, test_case_ranges: newRanges });
   };
 
   const removeTestCaseRange = (index: number) => {
     setFormData({
       ...formData,
-      testCaseRanges: formData.testCaseRanges.filter((_, i) => i !== index),
+      test_case_ranges: formData.test_case_ranges.filter((_, i) => i !== index)
     });
   };
 
-  const updateTestCaseRange = (index: number, field: keyof TestCaseRange, value: number | string) => {
-    const updated = [...formData.testCaseRanges];
-    updated[index] = { ...updated[index], [field]: value };
-    setFormData({ ...formData, testCaseRanges: updated });
-  };
+  const filteredQuestions = questions.filter(q => 
+    q.title.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  if (loading) {
+    return (
+      <AuthGuard requiredRole="admin">
+        <div className="min-h-screen flex items-center justify-center bg-[#030712]">
+          <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      </AuthGuard>
+    );
+  }
 
   return (
     <AuthGuard requiredRole="admin">
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50 dark:from-[#0a0a0a] dark:via-[#1a1a1a] dark:to-[#0f0f0f]">
-        <div className="container mx-auto px-4 py-8 max-w-7xl">
-          {/* Header */}
-          <div className="bg-white dark:bg-[#1e1e1e] rounded-2xl shadow-xl border border-gray-200 dark:border-[#3d3d3d] p-6 mb-8">
-            <div className="flex justify-between items-center">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center shadow-lg">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-                  </svg>
-                </div>
-                <div>
-                  <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
-                    Admin Panel
-                  </h1>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                    Manage coding problems and test cases
-                  </p>
-                </div>
+      <AdminLayout>
+        <div className="max-w-7xl mx-auto space-y-8">
+          {/* Stats Section */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="glass-card p-6 rounded-2xl border border-white/5 bg-gradient-to-br from-indigo-500/10 to-purple-500/5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-white">Total Questions</h3>
+                <Code2 className="w-5 h-5 text-indigo-400" />
               </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowForm(!showForm)}
-                  className={`px-6 py-3 rounded-xl font-semibold transition-all transform hover:scale-105 active:scale-95 shadow-lg hover:shadow-xl ${
-                    showForm
-                      ? 'bg-gray-200 dark:bg-[#3d3d3d] text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-[#4d4d4d]'
-                      : 'bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600'
-                  }`}
-                >
-                  {showForm ? (
-                    <span className="flex items-center gap-2">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                      Cancel
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-2">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                      Add Question
-                    </span>
-                  )}
-                </button>
-                <LogoutButton />
+              <div className="flex items-end gap-2">
+                <span className="text-4xl font-bold text-white">{questions.length}</span>
+                <span className="text-gray-400 mb-1">Problems</span>
               </div>
             </div>
           </div>
 
-          {showForm && (
-            <div className="bg-white dark:bg-[#1e1e1e] rounded-2xl shadow-2xl border border-gray-200 dark:border-[#3d3d3d] p-8 mb-8">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-lg flex items-center justify-center">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {editingQuestion ? 'Edit Question' : 'Create New Question'}
-                </h2>
-              </div>
-              <form onSubmit={handleSubmit} className="space-y-6">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                    Question Title
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.title}
-                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                    className="w-full px-4 py-3 border-2 border-gray-300 dark:border-[#3d3d3d] rounded-xl bg-white dark:bg-[#252525] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#ffa116] focus:border-transparent transition-all"
-                    placeholder="Enter question title"
-                  />
-                </div>
+          {/* Header & Actions */}
+          <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-white">Manage Problems</h1>
+              <p className="text-gray-400 mt-1">Create and edit coding challenges</p>
+            </div>
+            <button
+              onClick={() => {
+                setIsEditing(false);
+                resetForm();
+                setShowForm(true);
+              }}
+              className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl hover:from-indigo-600 hover:to-purple-700 transition-all shadow-lg hover:shadow-indigo-500/25 transform hover:scale-105 active:scale-95"
+            >
+              <Plus className="w-5 h-5" />
+              Add Question
+            </button>
+          </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                    Description
-                  </label>
-                  <textarea
-                    required
-                    rows={8}
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    className="w-full px-4 py-3 border-2 border-gray-300 dark:border-[#3d3d3d] rounded-xl bg-white dark:bg-[#252525] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#ffa116] focus:border-transparent transition-all resize-none"
-                    placeholder="Enter problem description..."
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                    Difficulty Level
-                  </label>
-                  <div className="grid grid-cols-3 gap-3">
-                    {(['easy', 'medium', 'hard'] as const).map((diff) => (
-                      <button
-                        key={diff}
-                        type="button"
-                        onClick={() => setFormData({ ...formData, difficulty: diff })}
-                        className={`px-4 py-3 rounded-xl font-semibold transition-all transform hover:scale-105 ${
-                          formData.difficulty === diff
-                            ? diff === 'easy'
-                              ? 'bg-[#00b8a3] text-white shadow-lg scale-105'
-                              : diff === 'medium'
-                              ? 'bg-[#ffc01e] text-white shadow-lg scale-105'
-                              : 'bg-[#ff375f] text-white shadow-lg scale-105'
-                            : 'bg-gray-100 dark:bg-[#252525] text-gray-700 dark:text-gray-300 border-2 border-gray-300 dark:border-[#3d3d3d]'
-                        }`}
-                      >
-                        {diff.charAt(0).toUpperCase() + diff.slice(1)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex justify-between items-center mb-4">
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
-                      Static Test Cases ({formData.testCases.length})
-                      {formData.testCaseRanges.length > 0 && (
-                        <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
-                          (Total: {formData.testCases.length + formData.testCaseRanges.reduce((sum, r) => sum + (r.end - r.start + 1), 0)})
-                        </span>
-                      )}
-                    </label>
-                    <button
-                      type="button"
-                      onClick={addTestCase}
-                      className="px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-xl hover:from-green-600 hover:to-emerald-600 transition-all transform hover:scale-105 shadow-lg hover:shadow-xl font-semibold flex items-center gap-2"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                      Add Test Case
-                    </button>
-                  </div>
-                  <div className="space-y-4">
-                    {formData.testCases.map((testCase, index) => (
-                      <div key={index} className="p-5 border-2 border-gray-200 dark:border-[#3d3d3d] rounded-xl bg-gradient-to-br from-gray-50 to-white dark:from-[#252525] dark:to-[#1e1e1e] hover:border-[#ffa116] dark:hover:border-[#ffa116] transition-all">
-                        <div className="flex justify-between items-center mb-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-500 rounded-lg flex items-center justify-center text-white font-bold text-sm">
-                              {index + 1}
-                            </div>
-                            <span className="text-sm font-semibold text-gray-900 dark:text-white">
-                              Test Case {index + 1}
-                            </span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => removeTestCase(index)}
-                            className="px-3 py-1.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors font-medium text-sm flex items-center gap-1"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                            Remove
-                          </button>
-                        </div>
-                        <div className="space-y-4">
-                          <div>
-                            <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Input</label>
-                            <textarea
-                              required
-                              rows={3}
-                              value={testCase.input}
-                              onChange={(e) => updateTestCase(index, 'input', e.target.value)}
-                              className="w-full px-3 py-2 text-sm border-2 border-gray-300 dark:border-[#3d3d3d] rounded-lg bg-white dark:bg-[#252525] text-gray-900 dark:text-white font-mono focus:outline-none focus:ring-2 focus:ring-[#ffa116] focus:border-transparent transition-all resize-none"
-                              placeholder="Enter input (e.g., [2,7,11,15], 9)"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Expected Output</label>
-                            <textarea
-                              required
-                              rows={3}
-                              value={testCase.expected_output}
-                              onChange={(e) => updateTestCase(index, 'expected_output', e.target.value)}
-                              className="w-full px-3 py-2 text-sm border-2 border-gray-300 dark:border-[#3d3d3d] rounded-lg bg-white dark:bg-[#252525] text-gray-900 dark:text-white font-mono focus:outline-none focus:ring-2 focus:ring-[#ffa116] focus:border-transparent transition-all resize-none"
-                              placeholder="Enter expected output (e.g., [0,1])"
-                            />
-                          </div>
-                          <div className="flex items-center gap-2 p-3 bg-gray-100 dark:bg-[#252525] rounded-lg">
-                            <input
-                              type="checkbox"
-                              id={`hidden-${index}`}
-                              checked={testCase.is_hidden}
-                              onChange={(e) => updateTestCase(index, 'is_hidden', e.target.checked)}
-                              className="w-5 h-5 text-[#ffa116] border-gray-300 dark:border-[#3d3d3d] rounded focus:ring-2 focus:ring-[#ffa116]"
-                            />
-                            <label htmlFor={`hidden-${index}`} className="text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer">
-                              Hide from users (premium test case)
-                            </label>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Test Case Ranges Section */}
-                <div>
-                  <div className="flex justify-between items-center mb-4">
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
-                      Dynamic Test Case Ranges ({formData.testCaseRanges.length})
-                      <span className="ml-2 text-xs text-gray-500 dark:text-gray-400 font-normal">
-                        (Max 1000 total test cases including static)
-                      </span>
-                    </label>
-                    <button
-                      type="button"
-                      onClick={addTestCaseRange}
-                      className="px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-xl hover:from-purple-600 hover:to-indigo-600 transition-all transform hover:scale-105 shadow-lg hover:shadow-xl font-semibold flex items-center gap-2"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                      Add Range
-                    </button>
-                  </div>
-                  <div className="space-y-4">
-                    {formData.testCaseRanges.map((range, index) => {
-                      const rangeCount = range.end - range.start + 1;
-                      return (
-                        <div key={index} className="p-5 border-2 border-gray-200 dark:border-[#3d3d3d] rounded-xl bg-gradient-to-br from-purple-50 to-indigo-50 dark:from-[#2a1a3d] dark:to-[#1e1e2e] hover:border-purple-400 dark:hover:border-purple-500 transition-all">
-                          <div className="flex justify-between items-center mb-4">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-indigo-500 rounded-lg flex items-center justify-center text-white font-bold text-sm">
-                                {index + 1}
-                              </div>
-                              <span className="text-sm font-semibold text-gray-900 dark:text-white">
-                                Range {index + 1} ({rangeCount} test cases)
-                              </span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => removeTestCaseRange(index)}
-                              className="px-3 py-1.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors font-medium text-sm flex items-center gap-1"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                              Remove
-                            </button>
-                          </div>
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                                Start Index
-                              </label>
-                              <input
-                                type="number"
-                                min="1"
-                                required
-                                value={range.start}
-                                onChange={(e) => updateTestCaseRange(index, 'start', parseInt(e.target.value) || 1)}
-                                className="w-full px-3 py-2 text-sm border-2 border-gray-300 dark:border-[#3d3d3d] rounded-lg bg-white dark:bg-[#252525] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                                End Index
-                              </label>
-                              <input
-                                type="number"
-                                min={range.start}
-                                required
-                                value={range.end}
-                                onChange={(e) => updateTestCaseRange(index, 'end', parseInt(e.target.value) || range.start)}
-                                className="w-full px-3 py-2 text-sm border-2 border-gray-300 dark:border-[#3d3d3d] rounded-lg bg-white dark:bg-[#252525] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
-                              />
-                            </div>
-                          </div>
-                          <div className="mt-4">
-                            <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                              Generator Function (Optional)
-                            </label>
-                            <textarea
-                              rows={2}
-                              value={range.generator || ''}
-                              onChange={(e) => updateTestCaseRange(index, 'generator', e.target.value)}
-                              className="w-full px-3 py-2 text-sm border-2 border-gray-300 dark:border-[#3d3d3d] rounded-lg bg-white dark:bg-[#252525] text-gray-900 dark:text-white font-mono focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all resize-none"
-                              placeholder="Optional: JavaScript function to generate test cases for this range"
-                            />
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                              Note: Generator function support coming soon. For now, use static test cases.
-                            </p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                    {formData.testCaseRanges.length === 0 && (
-                      <div className="p-4 border-2 border-dashed border-gray-300 dark:border-[#3d3d3d] rounded-xl text-center text-sm text-gray-500 dark:text-gray-400">
-                        No test case ranges defined. Click "Add Range" to create dynamic test cases.
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full px-6 py-4 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-xl hover:shadow-2xl flex items-center justify-center gap-2"
-                >
-                  {loading ? (
-                    <>
-                      <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      <span>Saving...</span>
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                      <span>{editingQuestion ? 'Update Question' : 'Create Question'}</span>
-                    </>
-                  )}
-                </button>
-              </form>
+          {/* Search */}
+          {!showForm && (
+            <div className="relative bg-white/5 p-1 rounded-2xl border border-white/10 backdrop-blur-sm">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search questions..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-[#030712]/50 border-none rounded-xl py-3 pl-12 pr-4 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
+              />
             </div>
           )}
 
-          {/* Questions List */}
-          <div className="space-y-4">
-            {questions.length === 0 ? (
-              <div className="bg-white dark:bg-[#1e1e1e] rounded-2xl shadow-xl border border-gray-200 dark:border-[#3d3d3d] p-12 text-center">
-                <div className="w-20 h-20 bg-gradient-to-br from-gray-200 to-gray-300 dark:from-[#3d3d3d] dark:to-[#2d2d2d] rounded-full flex items-center justify-center mx-auto mb-4">
-                  <svg className="w-10 h-10 text-gray-400 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-                <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">No questions yet</h3>
-                <p className="text-gray-600 dark:text-gray-400 mb-6">Create your first coding problem to get started!</p>
-                <button
-                  onClick={() => setShowForm(true)}
-                  className="px-6 py-3 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl hover:from-orange-600 hover:to-red-600 transition-all transform hover:scale-105 shadow-lg hover:shadow-xl font-semibold"
-                >
-                  Create First Question
-                </button>
-              </div>
-            ) : (
-              <div className="grid gap-6">
-                {questions.map((question) => (
-                  <div
-                    key={question.id}
-                    className="bg-white dark:bg-[#1e1e1e] rounded-2xl shadow-xl border border-gray-200 dark:border-[#3d3d3d] overflow-hidden hover:shadow-2xl transition-all"
+          {/* Form or List */}
+          <AnimatePresence mode="wait">
+            {showForm ? (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="bg-white/5 border border-white/10 rounded-2xl p-8 space-y-8 backdrop-blur-xl"
+              >
+                <div className="flex items-center justify-between border-b border-white/10 pb-6">
+                  <h2 className="text-xl font-semibold text-white">
+                    {isEditing ? "Edit Question" : "New Question"}
+                  </h2>
+                  <button
+                    onClick={() => setShowForm(false)}
+                    className="p-2 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-colors"
                   >
-                    <div className="p-6">
-                      <div className="flex justify-between items-start mb-4">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-3">
-                            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-lg flex items-center justify-center text-white font-bold">
-                              Q
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                  {/* Left Column: Basic Info */}
+                  <div className="space-y-6">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-gray-300">Title</label>
+                      <input
+                        type="text"
+                        value={formData.title}
+                        onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                        className="w-full bg-[#030712] border border-white/10 rounded-xl p-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
+                        placeholder="e.g. Two Sum"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-gray-300">Difficulty</label>
+                      <select
+                        value={formData.difficulty}
+                        onChange={(e) => setFormData({ ...formData, difficulty: e.target.value as any })}
+                        className="w-full bg-[#030712] border border-white/10 rounded-xl p-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
+                      >
+                        <option value="easy">Easy</option>
+                        <option value="medium">Medium</option>
+                        <option value="hard">Hard</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-gray-300">Description (Markdown)</label>
+                      <textarea
+                        value={formData.description}
+                        onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                        className="w-full h-96 bg-[#030712] border border-white/10 rounded-xl p-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 font-mono text-sm resize-none transition-all"
+                        placeholder="Problem description..."
+                      />
+                    </div>
+                  </div>
+
+                  {/* Right Column: Test Cases */}
+                  <div className="space-y-8">
+                    {/* Static Test Cases */}
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
+                          <TestTube className="w-4 h-4" />
+                          Static Test Cases
+                        </label>
+                        <button
+                          onClick={addTestCase}
+                          className="text-sm text-indigo-400 hover:text-indigo-300 font-medium flex items-center gap-1"
+                        >
+                          <Plus className="w-4 h-4" />
+                          Add Case
+                        </button>
+                      </div>
+
+                      <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                        {formData.test_cases.map((testCase, index) => (
+                          <div key={index} className="bg-[#030712]/50 border border-white/10 rounded-xl p-4 space-y-4 relative group hover:border-indigo-500/30 transition-all">
+                            <button
+                              onClick={() => removeTestCase(index)}
+                              className="absolute top-2 right-2 p-1.5 hover:bg-red-500/20 text-gray-500 hover:text-red-400 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-1">
+                                <label className="text-xs text-gray-500">Input</label>
+                                <textarea
+                                  value={testCase.input}
+                                  onChange={(e) => updateTestCase(index, "input", e.target.value)}
+                                  className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-sm text-white font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
+                                  rows={2}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-xs text-gray-500">Output</label>
+                                <textarea
+                                  value={testCase.expected_output}
+                                  onChange={(e) => updateTestCase(index, "expected_output", e.target.value)}
+                                  className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-sm text-white font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
+                                  rows={2}
+                                />
+                              </div>
                             </div>
-                            <div>
-                              <h3 className="text-xl font-bold text-gray-900 dark:text-white">
-                                {question.title}
-                              </h3>
-                              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                Created {new Date(question.created_at).toLocaleDateString()}
-                              </p>
+
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                id={`hidden-${index}`}
+                                checked={testCase.is_hidden}
+                                onChange={(e) => updateTestCase(index, "is_hidden", e.target.checked)}
+                                className="rounded border-white/10 bg-white/5 text-indigo-500 focus:ring-indigo-500/50"
+                              />
+                              <label htmlFor={`hidden-${index}`} className="text-sm text-gray-400 select-none cursor-pointer">
+                                Hidden Test Case
+                              </label>
                             </div>
-                            <span className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-bold ${
-                              question.difficulty === 'easy' 
-                                ? 'bg-[#00b8a3] text-white' 
-                                : question.difficulty === 'medium'
-                                ? 'bg-[#ffc01e] text-white'
-                                : 'bg-[#ff375f] text-white'
-                            }`}>
-                              {question.difficulty.charAt(0).toUpperCase() + question.difficulty.slice(1)}
-                            </span>
                           </div>
-                          <p className="text-gray-600 dark:text-gray-400 mb-6 line-clamp-2">{question.description}</p>
-                          
-                          {/* Test Cases Display */}
-                          <div className="bg-gradient-to-br from-gray-50 to-white dark:from-[#252525] dark:to-[#1e1e1e] rounded-xl p-4 border border-gray-200 dark:border-[#3d3d3d]">
-                            <div className="flex items-center justify-between mb-3">
-                              <h4 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                                <svg className="w-5 h-5 text-[#ffa116]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                                Test Cases ({question.test_cases.length})
-                              </h4>
+                        ))}
+                        {formData.test_cases.length === 0 && (
+                          <div className="text-center py-8 border border-dashed border-white/10 rounded-xl text-gray-500 text-sm">
+                            No static test cases added
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Dynamic Ranges */}
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
+                          <Layers className="w-4 h-4" />
+                          Dynamic Ranges
+                        </label>
+                        <button
+                          onClick={addTestCaseRange}
+                          className="text-sm text-purple-400 hover:text-purple-300 font-medium flex items-center gap-1"
+                        >
+                          <Plus className="w-4 h-4" />
+                          Add Range
+                        </button>
+                      </div>
+
+                      <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                        {formData.test_case_ranges.map((range, index) => (
+                          <div key={index} className="bg-[#030712]/50 border border-white/10 rounded-xl p-4 space-y-4 relative group hover:border-purple-500/30 transition-all">
+                            <button
+                              onClick={() => removeTestCaseRange(index)}
+                              className="absolute top-2 right-2 p-1.5 hover:bg-red-500/20 text-gray-500 hover:text-red-400 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-1">
+                                <label className="text-xs text-gray-500">Start Index</label>
+                                <input
+                                  type="number"
+                                  value={range.start}
+                                  onChange={(e) => updateTestCaseRange(index, "start", parseInt(e.target.value) || 0)}
+                                  className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-sm text-white font-mono focus:outline-none focus:ring-1 focus:ring-purple-500/50"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-xs text-gray-500">End Index</label>
+                                <input
+                                  type="number"
+                                  value={range.end}
+                                  onChange={(e) => updateTestCaseRange(index, "end", parseInt(e.target.value) || 0)}
+                                  className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-sm text-white font-mono focus:outline-none focus:ring-1 focus:ring-purple-500/50"
+                                />
+                              </div>
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                              {question.test_cases.map((testCase, index) => (
-                                <div
-                                  key={index}
-                                  className="p-3 border-2 border-gray-200 dark:border-[#3d3d3d] rounded-lg bg-white dark:bg-[#1e1e1e]"
-                                >
-                                  <div className="flex items-center justify-between mb-2">
-                                    <span className="text-xs font-bold text-gray-900 dark:text-white">
-                                      Case {index + 1}
-                                    </span>
-                                    {testCase.is_hidden && (
-                                      <span className="text-xs px-2 py-0.5 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 rounded font-semibold">
-                                        🔒 Hidden
-                                      </span>
-                                    )}
-                                  </div>
-                                  {!testCase.is_hidden && (
-                                    <div className="space-y-1.5 text-xs">
-                                      <div>
-                                        <span className="font-semibold text-gray-600 dark:text-gray-400">Input: </span>
-                                        <span className="font-mono text-gray-900 dark:text-gray-100 bg-gray-50 dark:bg-[#252525] px-2 py-0.5 rounded">
-                                          {testCase.input.length > 30 ? testCase.input.substring(0, 30) + '...' : testCase.input}
-                                        </span>
-                                      </div>
-                                      <div>
-                                        <span className="font-semibold text-gray-600 dark:text-gray-400">Output: </span>
-                                        <span className="font-mono text-gray-900 dark:text-gray-100 bg-gray-50 dark:bg-[#252525] px-2 py-0.5 rounded">
-                                          {testCase.expected_output.length > 30 ? testCase.expected_output.substring(0, 30) + '...' : testCase.expected_output}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              ))}
+
+                            <div className="space-y-1">
+                              <label className="text-xs text-gray-500">Generator Script (Optional)</label>
+                              <textarea
+                                value={range.generator || ""}
+                                onChange={(e) => updateTestCaseRange(index, "generator", e.target.value)}
+                                className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-sm text-white font-mono focus:outline-none focus:ring-1 focus:ring-purple-500/50"
+                                rows={2}
+                                placeholder="// JS code to generate cases"
+                              />
                             </div>
                           </div>
-                        </div>
-                        <div className="flex flex-col gap-2 ml-4">
-                          <button
-                            onClick={() => handleEdit(question)}
-                            className="px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 transition-all transform hover:scale-105 shadow-lg hover:shadow-xl font-semibold text-sm flex items-center gap-2"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => handleDelete(question.id)}
-                            className="px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl hover:from-red-600 hover:to-red-700 transition-all transform hover:scale-105 shadow-lg hover:shadow-xl font-semibold text-sm flex items-center gap-2"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                            Delete
-                          </button>
-                        </div>
+                        ))}
+                        {formData.test_case_ranges.length === 0 && (
+                          <div className="text-center py-8 border border-dashed border-white/10 rounded-xl text-gray-500 text-sm">
+                            No dynamic ranges added
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
+                </div>
+
+                <div className="flex justify-end gap-4 pt-6 border-t border-white/10">
+                  <button
+                    onClick={() => setShowForm(false)}
+                    className="px-6 py-2.5 rounded-xl border border-white/10 text-gray-300 hover:bg-white/5 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSave}
+                    className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white hover:from-indigo-600 hover:to-purple-700 transition-all shadow-lg hover:shadow-indigo-500/25 flex items-center gap-2"
+                  >
+                    <Save className="w-4 h-4" />
+                    Save Question
+                  </button>
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="grid grid-cols-1 gap-4"
+              >
+                {filteredQuestions.map((question, index) => (
+                  <motion.div
+                    key={question.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                    className="group relative bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl p-6 transition-all duration-300 hover:border-indigo-500/50 hover:shadow-[0_0_30px_-10px_rgba(99,102,241,0.3)]"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center group-hover:from-indigo-500/20 group-hover:to-purple-500/20 transition-all">
+                          <Code2 className="w-6 h-6 text-gray-400 group-hover:text-indigo-500 transition-colors" />
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-semibold text-white group-hover:text-indigo-400 transition-colors">
+                            {question.title}
+                          </h3>
+                          <div className="flex items-center gap-3 mt-1">
+                            <span className={cn(
+                              "text-xs px-2 py-0.5 rounded-md font-medium",
+                              question.difficulty === "easy" ? "bg-green-500/10 text-green-400" :
+                              question.difficulty === "medium" ? "bg-yellow-500/10 text-yellow-400" :
+                              "bg-red-500/10 text-red-400"
+                            )}>
+                              {question.difficulty.toUpperCase()}
+                            </span>
+                            <span className="text-xs text-gray-500">
+                              {new Date(question.created_at).toLocaleDateString()}
+                            </span>
+                            <span className="text-xs text-gray-500 flex items-center gap-1">
+                              <TestTube className="w-3 h-3" />
+                              {question.test_cases?.length || 0} cases
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => handleEdit(question)}
+                          className="p-2 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-colors"
+                          title="Edit"
+                        >
+                          <Edit2 className="w-5 h-5" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(question.id)}
+                          className="p-2 hover:bg-red-500/10 rounded-lg text-gray-400 hover:text-red-400 transition-colors"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
                 ))}
-              </div>
+
+                {filteredQuestions.length === 0 && (
+                  <div className="text-center py-20">
+                    <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <Search className="w-8 h-8 text-gray-500" />
+                    </div>
+                    <h3 className="text-xl font-semibold text-white mb-2">No questions found</h3>
+                    <p className="text-gray-400">Try creating a new one</p>
+                  </div>
+                )}
+              </motion.div>
             )}
-          </div>
+          </AnimatePresence>
         </div>
-      </div>
+      </AdminLayout>
     </AuthGuard>
   );
 }
-

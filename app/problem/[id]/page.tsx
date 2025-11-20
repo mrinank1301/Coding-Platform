@@ -6,6 +6,24 @@ import AuthGuard from '@/components/AuthGuard';
 import LogoutButton from '@/components/LogoutButton';
 import CodeEditor from '@/components/CodeEditor';
 import { supabase, Question } from '@/lib/supabase';
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  ArrowLeft, 
+  Play, 
+  Send, 
+  CheckCircle2, 
+  XCircle, 
+  AlertCircle, 
+  ChevronRight, 
+  Code2, 
+  Settings, 
+  Maximize2,
+  Minimize2,
+  Loader2,
+  Terminal,
+  Cpu
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 const LANGUAGES = [
   { value: 'c', label: 'C' },
@@ -201,9 +219,7 @@ export default function ProblemPage() {
 
       const result = await response.json();
       
-      // Check if there's an execution error
       if (result.error) {
-        // Execution failed (TLE, RTE, CE, etc.)
         setEditorTestResults({
           passed: false,
           status: result.status || 'runtime_error',
@@ -215,7 +231,6 @@ export default function ProblemPage() {
           input: testCaseInputs[selectedTestCaseIndex] || testCase.input,
         });
       } else if (result.status === 'accepted' && result.output !== undefined) {
-        // Code executed successfully - compare output
         const normalizedOutput = result.output.trim();
         const normalizedExpected = testCase.expected_output.trim();
         const passed = normalizedOutput === normalizedExpected;
@@ -231,7 +246,6 @@ export default function ProblemPage() {
           input: testCaseInputs[selectedTestCaseIndex] || testCase.input,
         });
       } else {
-        // Unexpected response format
         setEditorTestResults({
           passed: false,
           status: 'runtime_error',
@@ -244,7 +258,6 @@ export default function ProblemPage() {
         });
       }
     } catch (error) {
-      // Network or other errors
       setEditorTestResults({
         passed: false,
         status: 'runtime_error',
@@ -306,42 +319,31 @@ export default function ProblemPage() {
   const getErrorMessage = (error: string, status?: string, errorType?: string) => {
     if (!error && !status && !errorType) return null;
     
-    // Use errorType if available (most accurate)
     if (errorType) {
       switch (errorType) {
-        case 'TLE':
-          return { type: 'TLE', message: 'Time Limit Exceeded', description: error || 'Your code took too long to execute. Try optimizing your algorithm.' };
-        case 'RTE':
-          return { type: 'RTE', message: 'Runtime Error', description: error || 'An error occurred during execution. Check your code logic.' };
-        case 'CE':
-          return { type: 'CE', message: 'Compilation Error', description: error || 'There is a syntax error in your code. Please check and fix it.' };
-        case 'WA':
-          return { type: 'WA', message: 'Wrong Answer', description: error || 'Your output does not match the expected output.' };
-        case 'NF':
-          return { type: 'NF', message: 'Not Found', description: error || 'A variable or function was not found. Check for typos.' };
-        default:
-          return { type: errorType, message: errorType, description: error || 'An error occurred.' };
+        case 'TLE': return { type: 'TLE', message: 'Time Limit Exceeded', description: error || 'Your code took too long to execute.' };
+        case 'RTE': return { type: 'RTE', message: 'Runtime Error', description: error || 'An error occurred during execution.' };
+        case 'CE': return { type: 'CE', message: 'Compilation Error', description: error || 'Syntax error in your code.' };
+        case 'WA': return { type: 'WA', message: 'Wrong Answer', description: error || 'Output does not match expected result.' };
+        case 'NF': return { type: 'NF', message: 'Not Found', description: error || 'Variable or function not found.' };
+        default: return { type: errorType, message: errorType, description: error || 'An error occurred.' };
       }
     }
     
-    // Fallback to parsing error/status strings
     const errorLower = (error || '').toLowerCase();
     const statusLower = (status || '').toLowerCase();
     
     if (errorLower.includes('time limit') || statusLower.includes('time_limit') || statusLower === 'tle') {
-      return { type: 'TLE', message: 'Time Limit Exceeded', description: error || 'Your code took too long to execute. Try optimizing your algorithm.' };
+      return { type: 'TLE', message: 'Time Limit Exceeded', description: error || 'Your code took too long to execute.' };
     }
     if (errorLower.includes('runtime') || statusLower.includes('runtime_error') || statusLower === 'rte') {
-      return { type: 'RTE', message: 'Runtime Error', description: error || 'An error occurred during execution. Check your code logic.' };
+      return { type: 'RTE', message: 'Runtime Error', description: error || 'An error occurred during execution.' };
     }
     if (errorLower.includes('compilation') || errorLower.includes('compile') || errorLower.includes('syntax')) {
-      return { type: 'CE', message: 'Compilation Error', description: error || 'There is a syntax error in your code. Please check and fix it.' };
+      return { type: 'CE', message: 'Compilation Error', description: error || 'Syntax error in your code.' };
     }
     if (errorLower.includes('wrong answer') || statusLower.includes('wrong_answer')) {
-      return { type: 'WA', message: 'Wrong Answer', description: error || 'Your output does not match the expected output.' };
-    }
-    if (errorLower.includes('not found') || errorLower.includes('undefined')) {
-      return { type: 'NF', message: 'Not Found', description: error || 'A variable or function was not found. Check for typos.' };
+      return { type: 'WA', message: 'Wrong Answer', description: error || 'Output does not match expected result.' };
     }
     
     return { type: 'Error', message: 'Error', description: error || 'An error occurred.' };
@@ -350,8 +352,8 @@ export default function ProblemPage() {
   if (loading) {
     return (
       <AuthGuard>
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="text-lg">Loading...</div>
+        <div className="min-h-screen flex items-center justify-center bg-[#030712]">
+          <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
         </div>
       </AuthGuard>
     );
@@ -360,12 +362,12 @@ export default function ProblemPage() {
   if (!question) {
     return (
       <AuthGuard>
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="text-center">
-            <p className="text-lg text-gray-500 dark:text-gray-400 mb-4">Question not found</p>
+        <div className="min-h-screen flex items-center justify-center bg-[#030712]">
+          <div className="text-center space-y-4">
+            <p className="text-lg text-gray-400">Question not found</p>
             <button
               onClick={() => router.push('/client')}
-              className="px-4 py-2 bg-[#ffa116] text-white rounded-md hover:bg-[#ff9800]"
+              className="px-6 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors"
             >
               Back to Problems
             </button>
@@ -380,40 +382,59 @@ export default function ProblemPage() {
 
   return (
     <AuthGuard>
-      <div className="min-h-screen bg-[#f5f5f5] dark:bg-[#1a1a1a]">
+      <div className="min-h-screen bg-[#030712] text-white flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="bg-white dark:bg-[#282828] border-b border-[#e5e5e5] dark:border-[#3d3d3d] px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <header className="h-16 border-b border-white/10 bg-[#030712]/80 backdrop-blur-xl px-6 flex items-center justify-between shrink-0 z-20">
+          <div className="flex items-center gap-6">
             <button
               onClick={() => router.push('/client')}
-              className="px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#323232] rounded-md transition-colors"
+              className="p-2 hover:bg-white/5 rounded-lg text-gray-400 hover:text-white transition-colors group"
             >
-              ← Back to Problems
+              <ArrowLeft className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" />
             </button>
-            <h1 className="text-lg font-semibold text-gray-900 dark:text-white">{question.title}</h1>
-            <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${
-              question.difficulty === 'easy' 
-                ? 'bg-[#00b8a3] text-white' 
-                : question.difficulty === 'medium'
-                ? 'bg-[#ffc01e] text-white'
-                : 'bg-[#ff375f] text-white'
-            }`}>
-              {question.difficulty.charAt(0).toUpperCase() + question.difficulty.slice(1)}
-            </span>
+            <div className="flex items-center gap-4">
+              <h1 className="text-lg font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">
+                {question.title}
+              </h1>
+              <span className={cn(
+                "px-2.5 py-0.5 rounded-full text-xs font-medium border",
+                question.difficulty === 'easy' ? "bg-green-500/10 text-green-400 border-green-500/20" :
+                question.difficulty === 'medium' ? "bg-yellow-500/10 text-yellow-400 border-yellow-500/20" :
+                "bg-red-500/10 text-red-400 border-red-500/20"
+              )}>
+                {question.difficulty.charAt(0).toUpperCase() + question.difficulty.slice(1)}
+              </span>
+            </div>
           </div>
-          <LogoutButton />
-        </div>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 rounded-lg border border-white/10">
+              <Code2 className="w-4 h-4 text-gray-400" />
+              <select
+                value={language}
+                onChange={(e) => setLanguage(e.target.value)}
+                className="bg-transparent border-none text-sm text-gray-300 focus:outline-none cursor-pointer"
+              >
+                {LANGUAGES.map((lang) => (
+                  <option key={lang.value} value={lang.value} className="bg-[#030712]">
+                    {lang.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <LogoutButton />
+          </div>
+        </header>
 
-        {/* Main Content with Resizable Split */}
-        <div ref={containerRef} className="flex h-[calc(100vh-57px)]">
+        {/* Main Content */}
+        <div ref={containerRef} className="flex-1 flex overflow-hidden">
           {/* Left Panel - Problem Description */}
           <div 
-            className="bg-white dark:bg-[#1e1e1e] border-r border-[#e5e5e5] dark:border-[#3d3d3d] overflow-y-auto"
+            className="bg-[#030712] overflow-y-auto custom-scrollbar"
             style={{ width: `${leftPanelWidth}px`, minWidth: '300px', maxWidth: '70%' }}
           >
-            <div className="p-6">
-              <div className="prose prose-sm dark:prose-invert max-w-none">
-                <div className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">
+            <div className="p-8 space-y-6">
+              <div className="prose prose-invert max-w-none prose-headings:text-white prose-p:text-gray-300 prose-strong:text-white prose-code:text-indigo-400 prose-pre:bg-white/5 prose-pre:border prose-pre:border-white/10">
+                <div className="whitespace-pre-wrap leading-relaxed">
                   {question.description}
                 </div>
               </div>
@@ -423,80 +444,22 @@ export default function ProblemPage() {
           {/* Resize Handle */}
           <div
             onMouseDown={handleMouseDown}
-            className={`w-1 bg-[#e5e5e5] dark:bg-[#3d3d3d] cursor-col-resize hover:bg-[#ffa116] dark:hover:bg-[#ffa116] transition-colors ${
-              isResizing ? 'bg-[#ffa116]' : ''
-            }`}
-            style={{ userSelect: 'none' }}
+            className={cn(
+              "w-1 bg-white/5 hover:bg-indigo-500/50 transition-colors cursor-col-resize flex items-center justify-center group z-10",
+              isResizing && "bg-indigo-500/50"
+            )}
           >
-            <div className="h-full w-full flex items-center justify-center">
-              <div className="h-12 w-0.5 bg-gray-400 dark:bg-gray-600 rounded"></div>
-            </div>
+            <div className="h-8 w-0.5 bg-white/20 group-hover:bg-white/50 rounded-full transition-colors" />
           </div>
 
-          {/* Right Panel - Code Editor and Test Cases */}
-          <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-[#1e1e1e]">
-            {/* Editor Toolbar */}
-            <div className="bg-[#fafafa] dark:bg-[#252525] border-b border-[#e5e5e5] dark:border-[#3d3d3d] px-4 py-2.5 flex items-center gap-4">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2">
-                  <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Language:</label>
-                  <select
-                    value={language}
-                    onChange={(e) => setLanguage(e.target.value)}
-                    className="px-3 py-1.5 text-sm border border-[#e5e5e5] dark:border-[#3d3d3d] rounded-md bg-white dark:bg-[#1e1e1e] text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-[#ffa116] focus:border-transparent"
-                  >
-                    {LANGUAGES.map((lang) => (
-                      <option key={lang.value} value={lang.value}>
-                        {lang.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex items-center gap-2">
-                  <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Theme:</label>
-                  <select
-                    value={theme}
-                    onChange={(e) => setTheme(e.target.value as 'light' | 'dark')}
-                    className="px-3 py-1.5 text-sm border border-[#e5e5e5] dark:border-[#3d3d3d] rounded-md bg-white dark:bg-[#1e1e1e] text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-[#ffa116] focus:border-transparent"
-                  >
-                    <option value="light">Light</option>
-                    <option value="dark">Dark</option>
-                  </select>
-                </div>
-              </div>
-              <div className="flex-1" />
-              <button
-                onClick={handleRunTest}
-                disabled={runningTest || !currentTestCase}
-                className="px-4 py-1.5 text-sm bg-white dark:bg-[#1e1e1e] border border-[#e5e5e5] dark:border-[#3d3d3d] text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-50 dark:hover:bg-[#252525] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {runningTest ? 'Running...' : 'Run'}
-              </button>
-              <button
-                onClick={handleSubmit}
-                disabled={submitting}
-                className="px-6 py-1.5 text-sm bg-[#ffa116] hover:bg-[#ff9800] text-white font-medium rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm hover:shadow-md"
-              >
-                {submitting ? (
-                  <span className="flex items-center gap-2">
-                    <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Submitting...
-                  </span>
-                ) : (
-                  'Submit'
-                )}
-              </button>
-            </div>
-
+          {/* Right Panel - Editor & Test Cases */}
+          <div className="flex-1 flex flex-col min-w-0 bg-[#0a0a0a]">
             {/* Code Editor */}
-            <div className="flex-1 overflow-hidden bg-[#fafafa] dark:bg-[#1e1e1e]">
-              <div className="h-full p-4">
+            <div className="flex-1 relative group">
+              <div className="absolute inset-0">
                 <CodeEditor
                   language={language}
-                  theme={theme}
+                  theme="dark"
                   value={code}
                   onChange={(value) => setCode(value || '')}
                   height="100%"
@@ -504,242 +467,311 @@ export default function ProblemPage() {
               </div>
             </div>
 
-            {/* Test Cases Section */}
-            <div className="h-64 bg-white dark:bg-[#1e1e1e] border-t border-[#e5e5e5] dark:border-[#3d3d3d] flex flex-col">
-              {/* Tabs */}
-              <div className="flex border-b border-[#e5e5e5] dark:border-[#3d3d3d]">
-                <button
-                  onClick={() => setTestCaseTab('testcase')}
-                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                    testCaseTab === 'testcase'
-                      ? 'border-[#ffa116] text-[#ffa116]'
-                      : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-                  }`}
-                >
-                  Testcase
-                </button>
-                <button
-                  onClick={() => setTestCaseTab('result')}
-                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                    testCaseTab === 'result'
-                      ? 'border-[#ffa116] text-[#ffa116]'
-                      : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-                  }`}
-                >
-                  Test Result
-                </button>
+            {/* Bottom Panel - Test Cases & Results */}
+            <div className="h-[40%] border-t border-white/10 bg-[#030712] flex flex-col">
+              {/* Toolbar */}
+              <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-white/5">
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setTestCaseTab('testcase')}
+                    className={cn(
+                      "px-4 py-2 text-sm font-medium rounded-lg transition-all relative",
+                      testCaseTab === 'testcase' 
+                        ? "text-white bg-white/10" 
+                        : "text-gray-400 hover:text-white hover:bg-white/5"
+                    )}
+                  >
+                    Test Cases
+                    {testCaseTab === 'testcase' && (
+                      <motion.div layoutId="activeTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500 rounded-full" />
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setTestCaseTab('result')}
+                    className={cn(
+                      "px-4 py-2 text-sm font-medium rounded-lg transition-all relative",
+                      testCaseTab === 'result' 
+                        ? "text-white bg-white/10" 
+                        : "text-gray-400 hover:text-white hover:bg-white/5"
+                    )}
+                  >
+                    Test Results
+                    {testCaseTab === 'result' && (
+                      <motion.div layoutId="activeTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500 rounded-full" />
+                    )}
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleRunTest}
+                    disabled={runningTest || !currentTestCase}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg border border-white/10 text-gray-300 hover:text-white hover:bg-white/5 hover:border-white/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {runningTest ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+                    Run
+                  </button>
+                  <button
+                    onClick={handleSubmit}
+                    disabled={submitting}
+                    className="flex items-center gap-2 px-6 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white rounded-lg shadow-lg hover:shadow-indigo-500/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                  >
+                    {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                    Submit
+                  </button>
+                </div>
               </div>
 
-              {/* Tab Content */}
-              <div className="flex-1 overflow-y-auto p-4">
-                {testCaseTab === 'testcase' ? (
-                  <div>
-                    {visibleTestCasesWithIndices.length > 0 ? (
-                      <>
-                        <div className="flex gap-2 mb-4 overflow-x-auto">
-                          {visibleTestCasesWithIndices.map((tc, idx) => (
-                            <button
-                              key={tc.originalIndex}
-                              onClick={() => setSelectedTestCaseIndex(tc.originalIndex)}
-                              className={`px-3 py-1.5 text-xs font-medium rounded-md whitespace-nowrap transition-colors ${
-                                selectedTestCaseIndex === tc.originalIndex
-                                  ? 'bg-[#ffa116] text-white'
-                                  : 'bg-gray-100 dark:bg-[#252525] text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-[#323232]'
-                              }`}
-                            >
-                              Case {idx + 1}
-                            </button>
-                          ))}
-                        </div>
-                        {currentTestCase && (
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">
-                              nums =
-                            </label>
-                            <textarea
-                              value={testCaseInputs[selectedTestCaseIndex] || currentTestCase.input}
-                              onChange={(e) => setTestCaseInputs({ ...testCaseInputs, [selectedTestCaseIndex]: e.target.value })}
-                              className="w-full px-3 py-2 text-sm border border-[#e5e5e5] dark:border-[#3d3d3d] rounded-md bg-white dark:bg-[#252525] text-gray-900 dark:text-gray-100 font-mono resize-none focus:outline-none focus:ring-2 focus:ring-[#ffa116] focus:border-transparent"
-                              rows={4}
-                              placeholder="Enter test case input"
-                            />
+              {/* Content */}
+              <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+                <AnimatePresence mode="wait">
+                  {testCaseTab === 'testcase' ? (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className="space-y-6"
+                    >
+                      {visibleTestCasesWithIndices.length > 0 ? (
+                        <>
+                          <div className="flex gap-2 overflow-x-auto pb-2">
+                            {visibleTestCasesWithIndices.map((tc, idx) => (
+                              <button
+                                key={tc.originalIndex}
+                                onClick={() => setSelectedTestCaseIndex(tc.originalIndex)}
+                                className={cn(
+                                  "px-4 py-2 text-sm font-medium rounded-lg transition-all whitespace-nowrap border",
+                                  selectedTestCaseIndex === tc.originalIndex
+                                    ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/50"
+                                    : "bg-white/5 text-gray-400 border-white/10 hover:bg-white/10 hover:text-white"
+                                )}
+                              >
+                                Case {idx + 1}
+                              </button>
+                            ))}
                           </div>
-                        )}
-                      </>
-                    ) : (
-                      <div className="text-center text-gray-500 dark:text-gray-400 text-sm py-8">
-                        No visible test cases available
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div>
-                    {runningTest ? (
-                      <div className="flex items-center justify-center h-full">
-                        <div className="text-center">
-                          <svg className="animate-spin h-8 w-8 mx-auto text-[#ffa116] mb-2" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                          </svg>
-                          <p className="text-sm text-gray-600 dark:text-gray-400">Running test case...</p>
-                        </div>
-                      </div>
-                    ) : editorTestResults ? (
-                      <div className="space-y-3">
-                        {(() => {
-                          const isAccepted = editorTestResults.passed === true || (editorTestResults.status === 'accepted' && !editorTestResults.error);
-                          const errorInfo = isAccepted ? null : getErrorMessage(editorTestResults.error, editorTestResults.status, editorTestResults.errorType);
-                          
-                          return (
-                            <div className={`p-4 rounded-lg border-2 ${
-                              isAccepted
-                                ? 'bg-[#e8f5e9] dark:bg-[#1b3a1f] border-[#4caf50] dark:border-[#4caf50]'
-                                : 'bg-[#ffebee] dark:bg-[#3a1f1f] border-[#f44336] dark:border-[#f44336]'
-                            }`}>
-                              <div className="flex items-center gap-2 mb-3">
-                                {isAccepted ? (
-                                  <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                                  </svg>
-                                ) : (
-                                  <svg className="w-6 h-6 text-red-600 dark:text-red-400" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                                  </svg>
-                                )}
-                                <span className={`font-bold text-base ${
-                                  isAccepted
-                                    ? 'text-green-700 dark:text-green-400'
-                                    : 'text-red-700 dark:text-red-400'
-                                }`}>
-                                  {isAccepted ? 'Accepted ✓' : (errorInfo?.message || 'Wrong Answer')}
-                                </span>
-                                {errorInfo && !isAccepted && (
-                                  <span className="text-xs px-2.5 py-1 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-lg font-bold">
-                                    {errorInfo.type}
-                                  </span>
-                                )}
+                          {currentTestCase && (
+                            <div className="space-y-2">
+                              <label className="text-xs font-medium text-gray-400 uppercase tracking-wider">Input</label>
+                              <div className="relative group">
+                                <textarea
+                                  value={testCaseInputs[selectedTestCaseIndex] || currentTestCase.input}
+                                  onChange={(e) => setTestCaseInputs({ ...testCaseInputs, [selectedTestCaseIndex]: e.target.value })}
+                                  className="w-full bg-[#0a0a0a] border border-white/10 rounded-xl p-4 text-sm text-gray-300 font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all resize-none"
+                                  rows={4}
+                                  spellCheck={false}
+                                />
+                                <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <Terminal className="w-4 h-4 text-gray-600" />
+                                </div>
                               </div>
-                              {errorInfo && !isAccepted && (
-                                <div className="text-sm text-red-700 dark:text-red-400 mb-3 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border-l-4 border-red-500">
-                                  <strong className="font-semibold">{errorInfo.type}:</strong> {errorInfo.description}
-                                </div>
-                              )}
-                              {editorTestResults.output !== undefined && (
-                                <div className="space-y-2 text-sm">
-                                  <div className="p-2 bg-white/50 dark:bg-black/20 rounded">
-                                    <span className="font-semibold text-gray-700 dark:text-gray-300">Output: </span>
-                                    <span className="font-mono text-gray-900 dark:text-gray-100">{editorTestResults.output || '(empty)'}</span>
-                                  </div>
-                                  {editorTestResults.expected && (
-                                    <div className="p-2 bg-white/50 dark:bg-black/20 rounded">
-                                      <span className="font-semibold text-gray-700 dark:text-gray-300">Expected: </span>
-                                      <span className="font-mono text-gray-900 dark:text-gray-100">{editorTestResults.expected}</span>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
                             </div>
-                          );
-                        })()}
-                      </div>
-                    ) : submissionResult ? (
-                      <div className="space-y-2">
-                        {(() => {
-                          const errorInfo = getErrorMessage(submissionResult.error, submissionResult.status, submissionResult.errorType);
-                          return (
-                            <div className={`p-3 rounded-md border ${
-                              submissionResult.status === 'accepted'
-                                ? 'bg-[#e8f5e9] dark:bg-[#1b3a1f] border-[#4caf50] dark:border-[#4caf50]'
-                                : 'bg-[#ffebee] dark:bg-[#3a1f1f] border-[#f44336] dark:border-[#f44336]'
-                            }`}>
-                              <div className="flex items-center gap-2 mb-3">
-                                {submissionResult.status === 'accepted' ? (
-                                  <svg className="w-5 h-5 text-green-600 dark:text-green-400" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                                  </svg>
-                                ) : (
-                                  <svg className="w-5 h-5 text-red-600 dark:text-red-400" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                                  </svg>
-                                )}
-                                <span className={`font-semibold text-sm ${
-                                  submissionResult.status === 'accepted'
-                                    ? 'text-green-700 dark:text-green-400'
-                                    : 'text-red-700 dark:text-red-400'
-                                }`}>
-                                  {submissionResult.status === 'accepted' ? 'Accepted' : (errorInfo?.message || submissionResult.status)}
-                                </span>
-                                {errorInfo && (
-                                  <span className="text-xs px-2 py-0.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded">
-                                    {errorInfo.type}
-                                  </span>
+                          )}
+                        </>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center h-32 text-gray-500">
+                          <AlertCircle className="w-8 h-8 mb-2 opacity-50" />
+                          <p>No visible test cases available</p>
+                        </div>
+                      )}
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className="h-full"
+                    >
+                      {runningTest ? (
+                        <div className="flex flex-col items-center justify-center h-full text-gray-400 space-y-4">
+                          <div className="relative">
+                            <div className="w-12 h-12 border-4 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
+                            <Cpu className="w-5 h-5 text-indigo-500 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+                          </div>
+                          <p className="animate-pulse">Running test case...</p>
+                        </div>
+                      ) : editorTestResults ? (
+                        <div className="space-y-4">
+                          {(() => {
+                            const isAccepted = editorTestResults.passed === true || (editorTestResults.status === 'accepted' && !editorTestResults.error);
+                            const errorInfo = isAccepted ? null : getErrorMessage(editorTestResults.error, editorTestResults.status, editorTestResults.errorType);
+                            
+                            return (
+                              <div className={cn(
+                                "rounded-xl border p-6 space-y-4",
+                                isAccepted 
+                                  ? "bg-green-500/5 border-green-500/20" 
+                                  : "bg-red-500/5 border-red-500/20"
+                              )}>
+                                <div className="flex items-center gap-3">
+                                  <div className={cn(
+                                    "w-10 h-10 rounded-lg flex items-center justify-center",
+                                    isAccepted ? "bg-green-500/10" : "bg-red-500/10"
+                                  )}>
+                                    {isAccepted ? (
+                                      <CheckCircle2 className="w-6 h-6 text-green-500" />
+                                    ) : (
+                                      <XCircle className="w-6 h-6 text-red-500" />
+                                    )}
+                                  </div>
+                                  <div>
+                                    <h3 className={cn(
+                                      "text-lg font-bold",
+                                      isAccepted ? "text-green-400" : "text-red-400"
+                                    )}>
+                                      {isAccepted ? 'Accepted' : (errorInfo?.message || 'Wrong Answer')}
+                                    </h3>
+                                    {errorInfo && !isAccepted && (
+                                      <p className="text-sm text-red-400/80 mt-0.5">
+                                        {errorInfo.description}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {editorTestResults.output !== undefined && (
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                                    <div className="space-y-2">
+                                      <label className="text-xs font-medium text-gray-500 uppercase">Your Output</label>
+                                      <div className="bg-[#0a0a0a] border border-white/10 rounded-lg p-3 font-mono text-sm text-gray-300">
+                                        {editorTestResults.output || <span className="text-gray-600 italic">(empty)</span>}
+                                      </div>
+                                    </div>
+                                    {editorTestResults.expected && (
+                                      <div className="space-y-2">
+                                        <label className="text-xs font-medium text-gray-500 uppercase">Expected Output</label>
+                                        <div className="bg-[#0a0a0a] border border-white/10 rounded-lg p-3 font-mono text-sm text-gray-300">
+                                          {editorTestResults.expected}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
                                 )}
                               </div>
-                              {errorInfo && (
-                                <div className="text-xs text-red-600 dark:text-red-400 mb-3 p-2 bg-red-50 dark:bg-red-900/20 rounded">
-                                  <strong>{errorInfo.type}:</strong> {errorInfo.description}
+                            );
+                          })()}
+                        </div>
+                      ) : submissionResult ? (
+                        <div className="space-y-6">
+                          {(() => {
+                            const errorInfo = getErrorMessage(submissionResult.error, submissionResult.status, submissionResult.errorType);
+                            const isAccepted = submissionResult.status === 'accepted';
+
+                            return (
+                              <div className="space-y-6">
+                                <div className="flex items-center gap-3 mb-4">
+                                  <div className={cn(
+                                    "w-10 h-10 rounded-lg flex items-center justify-center",
+                                    isAccepted ? "bg-green-500/10" : "bg-red-500/10"
+                                  )}>
+                                    {isAccepted ? (
+                                      <CheckCircle2 className="w-6 h-6 text-green-500" />
+                                    ) : (
+                                      <XCircle className="w-6 h-6 text-red-500" />
+                                    )}
+                                  </div>
+                                  <div>
+                                    <h3 className={cn(
+                                      "text-lg font-bold",
+                                      isAccepted ? "text-green-400" : "text-red-400"
+                                    )}>
+                                      {isAccepted ? 'Accepted' : (errorInfo?.message || 'Wrong Answer')}
+                                    </h3>
+                                    {errorInfo && (
+                                      <p className="text-sm text-red-400/80 mt-0.5">
+                                        {errorInfo.description}
+                                      </p>
+                                    )}
+                                  </div>
                                 </div>
-                              )}
-                              {submissionResult.testResults && (
-                                <div className="space-y-2 text-xs">
-                                  {submissionResult.testResults.map((result: any, index: number) => {
-                                    const testCase = question.test_cases?.[result.test_case_id];
-                                    const resultErrorInfo = getErrorMessage(result.error, result.passed ? 'accepted' : 'wrong_answer', result.errorType);
-                                    return (
-                                      <div key={index} className="p-2 bg-white/50 dark:bg-black/20 rounded">
-                                        <div className="flex items-center gap-2 mb-1">
-                                          <span className={result.passed ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>
-                                            {result.passed ? '✓' : '✗'}
-                                          </span>
-                                          <span className="font-medium">Test Case {index + 1}</span>
-                                          {resultErrorInfo && !result.passed && (
-                                            <span className="text-xs px-1.5 py-0.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded">
-                                              {resultErrorInfo.type}
-                                            </span>
+
+                                {submissionResult.testResults && submissionResult.testResults.length > 0 && (
+                                  <div className="space-y-4">
+                                    <div className="flex gap-2 overflow-x-auto pb-2">
+                                      {submissionResult.testResults.map((result: any, index: number) => (
+                                        <button
+                                          key={index}
+                                          onClick={() => setSelectedTestCaseIndex(index)}
+                                          className={cn(
+                                            "px-4 py-2 text-sm font-medium rounded-lg transition-all whitespace-nowrap border flex items-center gap-2",
+                                            selectedTestCaseIndex === index
+                                              ? "bg-white/10 text-white border-white/20"
+                                              : "bg-transparent text-gray-400 border-transparent hover:bg-white/5 hover:text-white"
+                                          )}
+                                        >
+                                          <div className={cn(
+                                            "w-2 h-2 rounded-full",
+                                            result.passed ? "bg-green-500" : "bg-red-500"
+                                          )} />
+                                          Case {index + 1}
+                                        </button>
+                                      ))}
+                                    </div>
+
+                                    {(() => {
+                                      const result = submissionResult.testResults[selectedTestCaseIndex];
+                                      if (!result) return null;
+                                      
+                                      // Find the input for this test case
+                                      // The result has test_case_id which corresponds to the index in the original test cases array
+                                      // But we need to be careful if we only have a subset of test cases or if indices match
+                                      // For now, let's assume test_case_id is the index in question.test_cases
+                                      const input = question.test_cases?.[result.test_case_id]?.input || 'Hidden';
+                                      
+                                      return (
+                                        <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                          <div className="space-y-2">
+                                            <label className="text-xs font-medium text-gray-500 uppercase">Input</label>
+                                            <div className="bg-[#0a0a0a] border border-white/10 rounded-lg p-3 font-mono text-sm text-gray-300 whitespace-pre-wrap">
+                                              {input}
+                                            </div>
+                                          </div>
+                                          
+                                          <div className="space-y-2">
+                                            <label className="text-xs font-medium text-gray-500 uppercase">Your Output</label>
+                                            <div className={cn(
+                                              "bg-[#0a0a0a] border rounded-lg p-3 font-mono text-sm whitespace-pre-wrap",
+                                              result.passed ? "border-white/10 text-gray-300" : "border-red-500/20 text-red-400 bg-red-500/5"
+                                            )}>
+                                              {result.output || <span className="text-gray-600 italic">(empty)</span>}
+                                            </div>
+                                          </div>
+
+                                          {result.expected && (
+                                            <div className="space-y-2">
+                                              <label className="text-xs font-medium text-gray-500 uppercase">Expected Output</label>
+                                              <div className="bg-[#0a0a0a] border border-white/10 rounded-lg p-3 font-mono text-sm text-gray-300 whitespace-pre-wrap">
+                                                {result.expected}
+                                              </div>
+                                            </div>
+                                          )}
+                                          
+                                          {result.error && (
+                                            <div className="space-y-2">
+                                              <label className="text-xs font-medium text-red-500 uppercase">Error</label>
+                                              <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-3 font-mono text-sm text-red-400 whitespace-pre-wrap">
+                                                {result.error}
+                                              </div>
+                                            </div>
                                           )}
                                         </div>
-                                        {resultErrorInfo && !result.passed && (
-                                          <div className="text-xs text-red-600 dark:text-red-400 mb-1 ml-6">
-                                            {resultErrorInfo.description}
-                                          </div>
-                                        )}
-                                        {!testCase?.is_hidden && (
-                                          <div className="text-xs space-y-1 ml-6">
-                                            {result.output !== undefined && (
-                                              <div>
-                                                <span className="text-gray-600 dark:text-gray-400">Output: </span>
-                                                <span className="font-mono">{result.output}</span>
-                                              </div>
-                                            )}
-                                            {result.expected && (
-                                              <div>
-                                                <span className="text-gray-600 dark:text-gray-400">Expected: </span>
-                                                <span className="font-mono">{result.expected}</span>
-                                              </div>
-                                            )}
-                                            {result.error && (
-                                              <div className="text-red-600 dark:text-red-400">
-                                                Error: {result.error}
-                                              </div>
-                                            )}
-                                          </div>
-                                        )}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })()}
-                      </div>
-                    ) : (
-                      <div className="text-center text-gray-500 dark:text-gray-400 text-sm py-8">
-                        Run code to see test results
-                      </div>
-                    )}
-                  </div>
-                )}
+                                      );
+                                    })()}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center h-32 text-gray-500">
+                          <Play className="w-8 h-8 mb-2 opacity-50" />
+                          <p>Run code to see results</p>
+                        </div>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             </div>
           </div>
@@ -748,4 +780,3 @@ export default function ProblemPage() {
     </AuthGuard>
   );
 }
-
